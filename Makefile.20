@@ -1,0 +1,10 @@
+CC=gcc
+CFLAGS= -Wall -DMODULE -D__KERNEL__ -DLINUX -DLINUX_20  -I/usr/src/linux/include
+all:ed_device.o server
+ed_device.o:ed_device.c
+	$(CC) $(CFLAGS) -c ed_device.c
+server:server.c
+	gcc  server.c -o server
+clean:
+	rm *.o
+	rm ./server
