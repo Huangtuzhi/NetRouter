@@ -1,8 +1,0 @@
-#!/bin/sh
-
-export PATH=/sbin:/bin
-
-# Use a pathname, as new modutils don't look in the current dir by default
-insmod ./ed_device.o $*
-ifconfig ed0 192.168.5.1
-

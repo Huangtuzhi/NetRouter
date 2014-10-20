@@ -1,13 +1,5 @@
 /* server.c ed server
- * Copy Right 2003 Li Suke , Software School of Peking University.
- * This program's task is to read data from /dev/ed_tx
- * and write data into /dev/ed_rec. /dev/ed_tx is for the
- * network driver to store the tx data; /dev/ed_rec is for
- * the network driver to get the data. 
- * Attention: we use SLIP protocol's END ESC to pack the packet.
- */
-
-/* /dev/ed_tx  ----> Pseudo network device sending buffer
+   /dev/ed_tx  ----> Pseudo network device sending buffer
    /dev/ed_rec ----> Pseudo network device reading buffer
 */
 #include <stdio.h>  
@@ -23,16 +15,18 @@
 #define BUFFER_SIZE 2048
 
 /* These defination is from SLIP protocol. */
-#define END             0300
+#define END             0300   //8进制
 #define ESC             0333
 #define ESC_END         0334            
 #define ESC_ESC         0335 
- 
+
+#define _DEBUG
 /* open the ttyS0 serial port */
 int open_port(void)
 {
       int fd; 
-      fd = open("/dev/ttySAC0", O_RDWR | O_NOCTTY | O_NDELAY );
+      fd = open("/dev/ttySAC1", O_RDWR | O_NOCTTY);
+	  //O_NDELAY和O_NONBLOCK作用相似
       if (fd == -1)
       {
 	perror("open_port: Unable to open /dev/ttyS0 - ");
@@ -51,8 +45,8 @@ int setup_com(int fd){
     /*
      * Set the baud rates to 19200...
      */
-    cfsetispeed(&options, B38400);
-    cfsetospeed(&options, B38400);
+    cfsetispeed(&options, B115200);
+    cfsetospeed(&options, B115200);
 
     /*
      * Enable the receiver and set local mode...
@@ -79,7 +73,7 @@ int setup_com(int fd){
     options.c_oflag &= ~OPOST;   
 
     /* set the timeout options */
-    options.c_cc[VMIN]  = 0;
+    options.c_cc[VMIN]  = 0;//读取等待时间
     options.c_cc[VTIME] = 10;
 
     tcsetattr(fd, TCSANOW, &options);
@@ -228,6 +222,7 @@ int main(int argc ,char *argv[]){
     }
     if(pid ==0){ //子进程
     	/* read process */
+		printf("This is the child-process fork\n");
         for (;;)
         {
 	    /* read data from /dev/ttyS0, and write the data into buffer_rec,wait for the 
@@ -237,9 +232,13 @@ int main(int argc ,char *argv[]){
             rec_count = 0;
             buffer_ptr = buffer;
           
-	    while ((nbytes = read(fd, rec_ptr, BUFFER_SIZE-1)) > 0){
-                rec_length = 0;
+ 	    printf("Waiting for data from COM1\n");
+	    while((nbytes = read(fd, rec_ptr, BUFFER_SIZE-1)) > 0)
+		{
+			//printf("The reading loop, %d\n",nbytes);
+			rec_length = 0;
 	    	for(i=0;i< nbytes;i++){
+				printf("Data Flow %d\n",rec_ptr[i]);
                     rec_count += 1;
                     rec_length = rec_length +1;
                     if((buffer_rec[i])== END){
@@ -248,15 +247,13 @@ int main(int argc ,char *argv[]){
                        break;
                     }
                 }
-               
-          
                 if(rec_count < BUFFER_SIZE){
                     memcpy(buffer_ptr,rec_ptr,rec_length);
                    
                     buffer_ptr += rec_length;    
                     rec_length = 0;               
                 }
-                /* we recieve two ENDs */ 
+                // we recieve two ENDs 
                 if(flag == 2){
                     flag = 0;                    
                     buffer_ptr = buffer;
@@ -267,21 +264,19 @@ int main(int argc ,char *argv[]){
                     #ifdef _DEBUG
                     printf("\n Service recieve :\n");
                     for(i=0;i<rec_count;i++)
-                        printf(" %02x",rec_ptr[i]&0xff);
+                        printf(" %d\n",rec_ptr[i]&0xff);
                     printf("\n");
                     #endif
                     write(fd_rec,rec_ptr,rec_count);//把收到串口数据写入/dev/ed_rec中
                  
                 }
-                        
-                 	
-                 
 	    }
          
 	}
      }else if(pid >0){//父进程返回进程号
         int length;
         /* write process */
+		printf("This is the parent-process fork\n");
         for (;;)
         {
 	    /* read data from /dev/ed_tx, and write the data into ttyS0
@@ -290,6 +285,7 @@ int main(int argc ,char *argv[]){
 	    tx_ptr = buffer_tx;
             ioctl(fd_tx,IOCTL_SET_BUSY,1);//改变ed_device中的busy标志位
             
+	    printf("Waiting for data from the buffer fd_tx\n");
 	    if((nbytes = read(fd_tx, tx_ptr, BUFFER_SIZE-1)) > 0)
 	    {   
                 

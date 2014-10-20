@@ -491,8 +491,8 @@ int ednet_change_mtu(struct net_device *dev, int new_mtu)
 int ednet_header(struct sk_buff *skb,
                  struct net_device *dev,
                  unsigned short type,
-                 void *daddr,
-                 void *saddr,
+                 const void *daddr,
+                 const void *saddr,
                  unsigned int len)
 {
     struct ethhdr *eth = (struct ethhdr *)skb_push(skb,ETH_HLEN);
@@ -587,7 +587,7 @@ void eddev_module_cleanup(void)
         	
 }
 
-int ednet_init(struct net_device *dev)
+void ednet_init(struct net_device *dev)
 {
 	struct ednet_priv *priv=NULL;
     ether_setup(dev); 
@@ -601,7 +601,7 @@ int ednet_init(struct net_device *dev)
 	priv=GetPrivate(dev);
     memset(priv, 0, sizeof(struct ednet_priv));
     spin_lock_init(& ((struct ednet_priv *)priv)->lock);
-	return 1;
+	return;
 }
 
 int ednet_module_init(void) //注册网络设备驱动
@@ -613,7 +613,7 @@ int ednet_module_init(void) //注册网络设备驱动
 	
 	if ( (err = register_netdev(ednet_dev)) )
             printk("ednet: error %i registering pseudo network device \"%s\"\n",err,ednet_dev->name);
-	return 1;
+	return 0;
 }
 
 static __exit void ednet_module_cleanup(void)
@@ -629,6 +629,7 @@ static __exit void ednet_module_cleanup(void)
 int InitModule(void)
 {
     int err;
+	printk("ed_device is iniitalited\n");
     err = eddev_module_init(); //初始化设备字符驱动
     if(err < 0)
         return err;
@@ -642,7 +643,7 @@ void CleanModule(void)
 {
     eddev_module_cleanup();
     ednet_module_cleanup();	
-	
+	printk("ed_device is removed\n");
 }
 
 //For kernel 2.6
