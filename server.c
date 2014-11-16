@@ -25,7 +25,7 @@
 int open_port(void)
 {
       int fd; 
-      fd = open("/dev/ttySAC1", O_RDWR | O_NOCTTY);
+      fd = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY);;//X86版本
 	  //O_NDELAY和O_NONBLOCK作用相似
       if (fd == -1)
       {
@@ -84,7 +84,8 @@ int setup_com(int fd){
 }
 int open_dev(char *file_name){
    int fd;
-   fd = open(file_name ,O_RDWR);
+  // fd = open(file_name ,O_RDWR | O_NONBLOCK );
+   fd = open(file_name ,O_RDWR );
    if(fd < 0)
    {
      perror("Open ed_rec device error:");
@@ -222,17 +223,18 @@ int main(int argc ,char *argv[]){
     }
     if(pid ==0){ //子进程
     	/* read process */
-		printf("This is the child-process fork\n");
+		printf("This is the child-process fork,pid=%d\n",pid);
         for (;;)
         {
 	    /* read data from /dev/ttyS0, and write the data into buffer_rec,wait for the 
 	       kernel to get the data.
 	    */
-            flag = 0;
+
+			flag = 0;
             rec_count = 0;
             buffer_ptr = buffer;
           
- 	    printf("Waiting for data from COM1\n");
+ 	    //printf("Waiting for data from Serial COM\n");
 	    while((nbytes = read(fd, rec_ptr, BUFFER_SIZE-1)) > 0)
 		{
 			//printf("The reading loop, %d\n",nbytes);
@@ -271,21 +273,21 @@ int main(int argc ,char *argv[]){
                  
                 }
 	    }
-         
+    
 	}
      }else if(pid >0){//父进程返回进程号
         int length;
         /* write process */
-		printf("This is the parent-process fork\n");
+		printf("This is the parent-process fork,pid=%d\n",pid);
         for (;;)
         {
 	    /* read data from /dev/ed_tx, and write the data into ttyS0
          to send the data.
          */
 	    tx_ptr = buffer_tx;
-            ioctl(fd_tx,IOCTL_SET_BUSY,1);//改变ed_device中的busy标志位
-            
-	    printf("Waiting for data from the buffer fd_tx\n");
+//		ioctl(fd_tx,IOCTL_SET_BUSY,1);//改变ed_device中的busy标志位
+
+	    printf("Waiting for data from buffer /dev/ed_tx\n");
 	    if((nbytes = read(fd_tx, tx_ptr, BUFFER_SIZE-1)) > 0)
 	    {   
                 
@@ -305,9 +307,7 @@ int main(int argc ,char *argv[]){
                    tx_ptr += tx_length;
                 }                   
             }
-
-            ioctl(fd_tx,IOCTL_SET_BUSY,0);
-
+//		ioctl(fd_tx,IOCTL_SET_BUSY,0);
 	}    	
      
      }

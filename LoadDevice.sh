@@ -1,4 +1,5 @@
-#!/bin/ash
+#!/bin/bash
+rmmod ed_device
 mknod /dev/ed_rec c 200 0
 mknod /dev/ed_tx  c 201 0
 insmod ed_device.ko

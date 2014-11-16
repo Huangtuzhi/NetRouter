@@ -34,7 +34,6 @@
 #include <linux/init.h>
 
 #define _DEBUG
-
 /* We must define the htons() function here, for the kernel has no
  * this API if you do not make source code dep
  */ 
@@ -67,7 +66,7 @@ static int device_init(void){
         ed[i].magic = ED_MAGIC;
         ed[i].mtu = ED_MTU;
         ed[i].busy = 0;
-        init_waitqueue_head(&ed[i].rwait);
+        init_waitqueue_head(&ed[i].rwait);//初始化等待队列头
         
 	if (ed[i].buffer == NULL)
 	    goto err_exit;	    	
@@ -82,7 +81,7 @@ err_exit:
 }
 
 
-/*Added by Tuzhi
+/*Added by Tuzhi 把获取的net_device的私有数据指针强制转换为ednet_priv类型
  */
 static struct ednet_priv *GetPrivate(struct net_device *dev)
 {
@@ -116,6 +115,7 @@ static int ed_realloc(int new_mtu){
 /* Open the two character devices,and let the ed_device's private pointer 
  * point to the file struct */
 //让edp私有指针指向file结构体
+//把内存中的打开的file文件赋给ed结构体
 static int device_open(struct inode *inode,struct file *file)
 {
     int Device_Major;
@@ -137,7 +137,7 @@ static int device_open(struct inode *inode,struct file *file)
     }    
     else
         return -1;
-    edp = (struct ed_device *)file->private_data;
+    edp = (struct ed_device *)file->private_data;//file结构的私有数据
                     
     if(edp->busy != 0){
        printk("The device is open!\n");	
@@ -161,29 +161,32 @@ int device_release(struct inode *inode,struct file *file)
     return 0;	
 }
 
-/* read data from ed_tx device */
+/* read data from ed_tx device *///ed_device的所有数据项在file的私有数据区
 ssize_t device_read(struct file *file,char *buffer,size_t length, loff_t *offset)
 {
     #ifdef _DEBUG
     int i;
     #endif
     struct ed_device *edp;
-    DECLARE_WAITQUEUE(wait,current);
+    DECLARE_WAITQUEUE(wait,current);//定义等待队列项
     edp = (struct ed_device *)file->private_data;
-    add_wait_queue(&edp->rwait,&wait);//休眠，由kernel_write唤醒
+    add_wait_queue(&edp->rwait,&wait);//手工休眠，由kernel_write唤醒
     for(;;){//内核中轮询，是否有数据可以读取，没有就阻塞用户进程。
         
         set_current_state(TASK_INTERRUPTIBLE);
         if ( file->f_flags & O_NONBLOCK)
             break;
         if ( edp->tx_len > 0)
-            break;
+            break;//直接处理数据
         
         if ( signal_pending(current))
-            break;
-        schedule();
-        
+            break;//处理伪唤醒
+		printk("Start going to sleep\n");
+        schedule();//进行进程调度
+		printk("return from scheduler\n");
     }
+	//跳出循环表示被唤醒
+    printk("Have been waked\n");
     set_current_state(TASK_RUNNING);
     remove_wait_queue(&edp->rwait,&wait);//有数据时唤醒用户进程
     
@@ -198,14 +201,15 @@ ssize_t device_read(struct file *file,char *buffer,size_t length, loff_t *offset
     {
    
         copy_to_user(buffer,edp->buffer,edp->tx_len);//buffer复制到用户空间
-        memset(edp->buffer,0,edp->buffer_size); //置空内核buffer
+        //memset(edp->buffer,0,edp->buffer_size); //置空内核buffer
         
         #ifdef _DEBUG //printk打印出信息
-        printk("\n read data from ed_tx \n");
+        printk("function [device_read]is called \n");
         for(i=0;i<edp->tx_len;i++)
             printk(" %02x",edp->buffer[i]&0xff);
         printk("\n");
         #endif
+        memset(edp->buffer,0,edp->buffer_size); //置空内核buffer
         
         length = edp->tx_len;
         edp->tx_len = 0;
@@ -220,14 +224,14 @@ ssize_t device_read(struct file *file,char *buffer,size_t length, loff_t *offset
  */
 ssize_t kernel_write(const char *buffer,size_t length,int buffer_size)
 {
-          
+	printk("function [kernel_write] is called \n");
     if(length > buffer_size )
         length = buffer_size;
     memset(ed[ED_TX_DEVICE].buffer,0,buffer_size);
     memcpy(ed[ED_TX_DEVICE].buffer,buffer,buffer_size);
     ed[ED_TX_DEVICE].tx_len = length;
     wake_up_interruptible(&ed[ED_TX_DEVICE].rwait);	
-    
+   // printk("function [kernel_write] is called \n");
     return length;
 }
 
@@ -263,8 +267,8 @@ ssize_t device_write(struct file *file,const char *buffer, size_t length,loff_t 
 }        
 
 //用来在APP层改变内核ed_device结构的busy位
-int device_ioctl(struct inode *inode,
-                 struct file *file,
+//long device_ioctl(struct inode *inode,
+long device_ioctl(struct file *file,
                  unsigned int ioctl_num,
                  unsigned long ioctl_param){
     struct ed_device *edp;
@@ -360,6 +364,7 @@ void ednet_rx(struct net_device *dev, int len, unsigned char *buf)
     skb->ip_summed = CHECKSUM_UNNECESSARY; 
     priv->stats.rx_packets++;
     netif_rx(skb);//传到TCP/IP层
+	printk("function [ednet_rx] is called\n");
     return;
 }
     
@@ -380,6 +385,7 @@ void ednet_hw_tx(char *buf, int len, struct net_device *dev)
         
         return;
     }
+    printk("function [ednet_hw_tx] is called\n");
     /* now push the data into ed_tx device */  
     ed[ED_TX_DEVICE].kernel_write(buf,len,ed[ED_TX_DEVICE].buffer_size); 
     
@@ -405,19 +411,21 @@ int ednet_tx(struct sk_buff *skb, struct net_device *dev)
     char *data;
     //struct ednet_priv *priv = (struct ednet_priv *) dev->priv;
     struct ednet_priv *priv=GetPrivate(dev);
-    if( ed[ED_TX_DEVICE].busy ==1){
+	printk("function [ednet_tx] is called by the kernel\n");
+  //  if( ed[ED_TX_DEVICE].busy ==1){
      
-        return -EBUSY;
-    }
+  //      return -EBUSY;
+   // }
    // if (dev->tbusy || skb == NULL) {
-	//这里的tbusy对应到2.6内核中应该怎么表示？
-    if (skb == NULL) {
+	//这里的tbusy对应到2.6内核中应该怎么表示？2.6内核中似乎没有这个标志，参考snull.c
+    /*
+	if (skb == NULL) {
   
         ednet_tx_timeout (dev);
         if (skb == NULL)
             return 0;
     }
-
+	*/
     len = skb->len < ETH_ZLEN ? ETH_ZLEN : skb->len;
     //对于以太网，如果有效数据的长度小于以太网冲突检测所要求数据帧的最小长度ETH_ZLEN，填0
     data = skb->data;
@@ -538,11 +546,11 @@ static const struct header_ops pse_header_ops=
 
 struct file_operations ed_ops ={
     .owner=THIS_MODULE,
-	.open=device_open,
+    .open=device_open,
     .read=device_read,
     .write=device_write,
-    .ioctl=device_ioctl,
-    .release=device_release
+    .unlocked_ioctl=device_ioctl, //这里指针不兼容
+	.release=device_release
 };
 
 /* initialize the character devices */
@@ -596,7 +604,7 @@ void ednet_init(struct net_device *dev)
 	dev->header_ops=&pse_header_ops;
 	dev->watchdog_timeo = timeout;
     dev->flags          |= IFF_NOARP;
-	dev->features       |=NETIF_F_NO_CSUM;
+	dev->features       |=NETIF_F_NO_CSUM;//注意和NETIF_F_HW_CSUM的区别
 
 	priv=GetPrivate(dev);
     memset(priv, 0, sizeof(struct ednet_priv));
@@ -607,7 +615,7 @@ void ednet_init(struct net_device *dev)
 int ednet_module_init(void) //注册网络设备驱动
 {
 	int err;
-	ednet_dev=alloc_netdev(sizeof(struct ednet_priv),"ed0",ednet_init);
+	ednet_dev=alloc_netdev(sizeof(struct ednet_priv),"ed0",ednet_init);//这里会把实例化的ednet_dev赋给dev
 	if(ednet_dev==NULL)
 		return -1;
 	

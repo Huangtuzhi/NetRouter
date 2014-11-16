@@ -14,7 +14,7 @@ int main()
 	int num=0;
 	unsigned char buff[]={192,30,40,50,60,70,10,20,219,10,20,221,12,192};
 	length=sizeof(buff);
-	fd=open("/dev/ttySAC1",O_RDWR | O_NOCTTY);
+	fd=open("/dev/ttyUSB0",O_RDWR | O_NOCTTY);
 	if(fd==-1)
 	{
 		perror("Open error\n");
